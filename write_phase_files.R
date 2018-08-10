@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-suppressPackageStartupMessages(library("argparse"))
+suppressPackageStartupMessages(library(argparse))
 suppressPackageStartupMessages(library(tidyverse))
 
 parser <- ArgumentParser()
@@ -8,8 +8,8 @@ parser <- ArgumentParser()
 parser$add_argument("-g", "--hlagenos", type = "character", 
 		    help = "HLA alleles for each individual")
 
-parser$add_argument("-v", "--vcf", type = "character", 
-		    help = "VCF file")
+parser$add_argument("-v", "--vcf", type = "character", default = NULL, 
+		    help = "VCF file with known phase variants (Optional)")
 
 parser$add_argument("-c", "--genecoord", type = "character", 
 		    help = "HLA genes start position")
@@ -18,13 +18,10 @@ parser$add_argument("-o", "--outdir", type = "character",
 		    help = "Output directory")
 
 args <- parser$parse_args()
-
-
 hla <- args$hlagenos
 vcf <- args$vcf 
-hcoord <- args$genecood
+hcoord <- args$genecoord
 outdir <- args$outdir
-
 
 hla_genos <- read_tsv(hla) 
 
@@ -38,24 +35,29 @@ hla_genos_recoded <- hla_genos %>%
 
 write_tsv(hla_genos_recoded, file.path(outdir, "hla_allele_codes.txt"))
 
-snp_genos <- read_tsv("./input/snps.vcf", comment = "##") %>%
-    select(grep("^id$", names(.), ignore.case = TRUE),
-	   grep("^pos$", names(.), ignore.case = TRUE),
-	   sort(unique(hla_genos$subject))) %>%
-    gather(subject, geno, -(1:2)) %>%
-    mutate(marker_type = "S") %>%
-    select(subject, locus = 1, pos = 2, marker_type, geno)
-
-hla_coords <- read_tsv("./input/hla_coordinates.tsv")
-
+hla_coords <- read_tsv(hcoord)
+    
 genos_df <- hla_genos_recoded %>%
     group_by(subject, locus) %>%
     summarise(geno = paste(code, collapse = "|")) %>%
     ungroup() %>%
     left_join(hla_coords, by = "locus") %>%
     mutate(marker_type = "M") %>%
-    select(subject, locus, pos, marker_type, geno) %>%
-    bind_rows(snp_genos) %>%
+    select(subject, locus, pos, marker_type, geno)
+
+if (!is.null(vcf)) {
+    snp_genos <- read_tsv(vcf, comment = "##") %>%
+	select(grep("^id$", names(.), ignore.case = TRUE),
+	       grep("^pos$", names(.), ignore.case = TRUE),
+	       sort(unique(hla_genos$subject))) %>%
+	gather(subject, geno, -(1:2)) %>%
+	mutate(marker_type = "S") %>%
+	select(subject, locus = 1, pos = 2, marker_type, geno)
+
+    genos_df <- genos_df %>% bind_rows(snp_genos)
+} 
+
+genos_df <- genos_df %>%
     arrange(subject, pos) %>%
     mutate(ix = "1|2") %>%
     separate_rows(ix, geno, sep = "\\|") %>%
@@ -80,7 +82,7 @@ haps <- genos_df %>%
     select(-ix)
 
 phaseinp <- file.path(outdir, "phase.inp")
-phaseknown <- file.path(outdir, "phase.know")
+phaseknown <- file.path(outdir, "phase.known")
 
 file.create(phaseinp)
 file.create(phaseknown)
