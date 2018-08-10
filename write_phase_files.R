@@ -23,6 +23,8 @@ vcf <- args$vcf
 hcoord <- args$genecoord
 outdir <- args$outdir
 
+if (!dir.exists(outdir)) dir.create(outdir)
+
 hla_genos <- read_tsv(hla) 
 
 hla_genos_recoded <- hla_genos %>%
